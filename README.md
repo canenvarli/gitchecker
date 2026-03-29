@@ -135,4 +135,4 @@ Config is stored in the standard Electron user data directory (`~/Library/Applic
 
 ## License
 
-MIT
+[MIT](LICENSE) © 2026 Izzet Can Envarli
