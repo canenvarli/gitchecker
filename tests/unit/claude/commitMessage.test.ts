@@ -74,7 +74,7 @@ describe('generateCommitMessage', () => {
     await generateCommitMessage(REPO_PATH, REPO_NAME)
 
     const promptArg = mockInvokeClaude.mock.calls[0][0] as string
-    expect(promptArg.toLowerCase()).toContain('conventional commit')
+    expect(promptArg).toContain('type(scope):')
   })
 
   it('prompt mentions valid conventional commit types', async () => {
@@ -96,8 +96,8 @@ describe('generateCommitMessage', () => {
 
     const result = await generateCommitMessage(REPO_PATH, REPO_NAME)
 
-    // Should be trimmed and only the first line
-    expect(result).toBe('feat(api): add cors support')
+    // Subject line trimmed; body lines preserved
+    expect(result).toBe('feat(api): add cors support\n\nsome extra line')
   })
 
   it('strips surrounding quotes from Claude response', async () => {

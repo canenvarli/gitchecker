@@ -11,8 +11,61 @@ import { loadConfig, updateConfig } from '../config/store'
 import { restartWatcher } from '../git/watcher'
 import type { PushJob, PushProgressEvent, RepoStatus } from '../../renderer/types'
 
-// Module-level state — kept for potential future use (e.g., diff against cached)
+// Module-level state — authoritative list of repos currently being monitored
 const _currentRepos: RepoStatus[] = []
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Security helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Validate that repoRoot is one of the repos we are actively monitoring.
+ * Prevents the renderer from pointing git operations at arbitrary paths.
+ */
+function validateRepoRoot(repoRoot: string): string {
+  const resolved = path.resolve(repoRoot)
+  const isKnown = _currentRepos.some(r => path.resolve(r.rootPath) === resolved)
+  if (!isKnown) {
+    throw new Error(`Access denied: ${resolved} is not a monitored repository`)
+  }
+  return resolved
+}
+
+/**
+ * Validate that filePath is a relative path that stays inside repoRoot.
+ * Rejects absolute paths and any path containing ".." segments.
+ */
+function validateFilePath(repoRoot: string, filePath: string): string {
+  if (path.isAbsolute(filePath)) {
+    throw new Error('File path must be relative to the repo root')
+  }
+  // Normalise to remove redundant separators without resolving symlinks
+  const normalised = path.normalize(filePath)
+  if (normalised.startsWith('..')) {
+    throw new Error('Path traversal denied')
+  }
+  // Double-check after resolution
+  const full = path.resolve(repoRoot, normalised)
+  const root = path.resolve(repoRoot)
+  if (full !== root && !full.startsWith(root + path.sep)) {
+    throw new Error('Path traversal denied')
+  }
+  return normalised
+}
+
+/**
+ * Validate a .gitignore pattern: must not contain newlines or null bytes
+ * (which could inject extra lines into the .gitignore file).
+ */
+function validateGitignorePattern(pattern: string): string {
+  if (typeof pattern !== 'string' || pattern.length === 0 || pattern.length > 256) {
+    throw new Error('Invalid gitignore pattern')
+  }
+  if (/[\r\n\0]/.test(pattern)) {
+    throw new Error('Gitignore pattern must not contain newlines or null bytes')
+  }
+  return pattern.trim()
+}
 
 export async function refreshRepos(win: BrowserWindow): Promise<RepoStatus[]> {
   const config = loadConfig()
@@ -40,23 +93,27 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // git:openFile
   // ──────────────────────────────────────────────
   ipcMain.handle('git:openFile', async (_event, filePath: string, repoRoot: string) => {
-    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath)
-    await shell.openPath(fullPath)
+    const root = validateRepoRoot(repoRoot)
+    const file = validateFilePath(root, filePath)
+    await shell.openPath(path.join(root, file))
   })
 
   // ──────────────────────────────────────────────
   // git:openInFinder
   // ──────────────────────────────────────────────
   ipcMain.handle('git:openInFinder', async (_event, filePath: string, repoRoot: string) => {
-    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath)
-    shell.showItemInFolder(fullPath)
+    const root = validateRepoRoot(repoRoot)
+    const file = validateFilePath(root, filePath)
+    shell.showItemInFolder(path.join(root, file))
   })
 
   // ──────────────────────────────────────────────
   // git:stageFile
   // ──────────────────────────────────────────────
   ipcMain.handle('git:stageFile', async (_event, filePath: string, repoRoot: string) => {
-    await stageFile(repoRoot, filePath)
+    const root = validateRepoRoot(repoRoot)
+    const file = validateFilePath(root, filePath)
+    await stageFile(root, file)
     await refreshRepos(mainWindow)
   })
 
@@ -64,7 +121,9 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // git:unstageFile
   // ──────────────────────────────────────────────
   ipcMain.handle('git:unstageFile', async (_event, filePath: string, repoRoot: string) => {
-    await unstageFile(repoRoot, filePath)
+    const root = validateRepoRoot(repoRoot)
+    const file = validateFilePath(root, filePath)
+    await unstageFile(root, file)
     await refreshRepos(mainWindow)
   })
 
@@ -72,7 +131,9 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // git:getDiff
   // ──────────────────────────────────────────────
   ipcMain.handle('git:getDiff', async (_event, filePath: string, repoRoot: string) => {
-    return getDiff(repoRoot, filePath)
+    const root = validateRepoRoot(repoRoot)
+    const file = validateFilePath(root, filePath)
+    return getDiff(root, file)
   })
 
   // ──────────────────────────────────────────────
@@ -82,7 +143,8 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     const config = loadConfig()
     const jobs = await Promise.allSettled(
       repos.map(async (repo): Promise<PushJob> => {
-        const commitMessage = await generateCommitMessage(repo.rootPath, repo.name, config.commitPrompt)
+        const root = validateRepoRoot(repo.rootPath)
+        const commitMessage = await generateCommitMessage(root, repo.name, config.commitPrompt)
         return {
           repo,
           commitMessage,
@@ -129,13 +191,15 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
         const { repo, commitMessage } = job
 
         try {
+          const root = validateRepoRoot(repo.rootPath)
+
           // Step 1: Pull
           emitProgress(repo.name, 'pulling', `Pulling ${repo.branch} from origin...`)
-          const { hadConflict, conflictedFiles } = await pullRepo(repo.rootPath, repo.branch)
+          const { hadConflict, conflictedFiles } = await pullRepo(root, repo.branch)
 
           if (hadConflict) {
             emitProgress(repo.name, 'conflict', `Merge conflict in ${conflictedFiles.length} file(s), auto-resolving...`)
-            await autoResolveMergeConflicts(repo.rootPath, conflictedFiles, (line) => {
+            await autoResolveMergeConflicts(root, conflictedFiles, (line) => {
               emitProgress(repo.name, 'conflict', line)
             })
             emitProgress(repo.name, 'conflict', 'Conflicts resolved')
@@ -145,17 +209,17 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
           // Step 2: Stage all
           emitProgress(repo.name, 'staging', 'Staging all changes...')
-          await stageAll(repo.rootPath)
+          await stageAll(root)
           emitProgress(repo.name, 'staging', 'Staged')
 
           // Step 3: Commit
           emitProgress(repo.name, 'committing', `Committing: ${commitMessage}`)
-          await commitRepo(repo.rootPath, commitMessage)
+          await commitRepo(root, commitMessage)
           emitProgress(repo.name, 'committing', 'Committed')
 
           // Step 4: Push
           emitProgress(repo.name, 'pushing', `Pushing to origin/${repo.branch}...`)
-          await pushRepo(repo.rootPath, repo.branch)
+          await pushRepo(root, repo.branch)
           emitProgress(repo.name, 'done', 'Push complete')
 
           job.status = 'done'
@@ -215,7 +279,9 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // git:addToGitignore
   // ──────────────────────────────────────────────
   ipcMain.handle('git:addToGitignore', async (_event, { pattern, repoRoot }: { pattern: string; repoRoot: string }) => {
-    const gitignorePath = path.join(repoRoot, '.gitignore')
+    const root = validateRepoRoot(repoRoot)
+    const safePattern = validateGitignorePattern(pattern)
+    const gitignorePath = path.join(root, '.gitignore')
     let content = ''
     try {
       content = fs.readFileSync(gitignorePath, 'utf8')
@@ -223,9 +289,9 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
       // File doesn't exist yet — will be created
     }
     const lines = content.split('\n').map((l) => l.trim())
-    if (!lines.includes(pattern)) {
+    if (!lines.includes(safePattern)) {
       const sep = content === '' || content.endsWith('\n') ? '' : '\n'
-      fs.writeFileSync(gitignorePath, content + sep + pattern + '\n', 'utf8')
+      fs.writeFileSync(gitignorePath, content + sep + safePattern + '\n', 'utf8')
     }
 
     // For tracked files, .gitignore alone doesn't stop git from showing them.
@@ -261,23 +327,21 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // git:readFile — read working tree file contents
   // ──────────────────────────────────────────────
   ipcMain.handle('git:readFile', async (_event, filePath: string, repoRoot: string) => {
-    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath)
-    // Safety: ensure path is within repoRoot
-    const resolved = path.resolve(fullPath)
-    const resolvedRoot = path.resolve(repoRoot)
-    if (!resolved.startsWith(resolvedRoot)) throw new Error('Path traversal denied')
-    return fs.readFileSync(resolved, 'utf8')
+    const root = validateRepoRoot(repoRoot)
+    const file = validateFilePath(root, filePath)
+    return fs.readFileSync(path.join(root, file), 'utf8')
   })
 
   // ──────────────────────────────────────────────
   // git:readFileHead — read file at HEAD revision
   // ──────────────────────────────────────────────
   ipcMain.handle('git:readFileHead', async (_event, filePath: string, repoRoot: string) => {
+    const root = validateRepoRoot(repoRoot)
+    const file = validateFilePath(root, filePath)
     try {
       const { simpleGit } = await import('simple-git')
-      const git = simpleGit(repoRoot)
-      // Normalize path separator for git
-      const gitPath = filePath.replace(/\\/g, '/')
+      const git = simpleGit(root)
+      const gitPath = file.replace(/\\/g, '/')
       return await git.show([`HEAD:${gitPath}`])
     } catch {
       return null  // File doesn't exist at HEAD (new/untracked file)

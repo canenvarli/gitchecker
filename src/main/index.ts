@@ -21,7 +21,7 @@ function createWindow(): BrowserWindow {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       preload: path.join(__dirname, '../preload/index.js'),
     },
     show: false,
@@ -162,14 +162,18 @@ app.on('before-quit', () => {
   stopWatcher()
 })
 
-// Security: prevent navigation to external URLs
+// Security: lock down all renderer web contents
 app.on('web-contents-created', (_event, contents) => {
+  // Block navigation to anything other than our own app origin
   contents.on('will-navigate', (event, navigationUrl) => {
-    const parsedUrl = new URL(navigationUrl)
-    if (parsedUrl.origin !== 'http://localhost:5173' && !isDev) {
+    const allowedOrigin = isDev ? 'http://localhost:5173' : 'file://'
+    if (!navigationUrl.startsWith(allowedOrigin)) {
       event.preventDefault()
     }
   })
+
+  // Block all new window creation (window.open, target=_blank, etc.)
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }))
 })
 
 // Handle config changes that require watcher restart (exposed for IPC)

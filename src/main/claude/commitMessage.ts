@@ -109,8 +109,11 @@ function cleanCommitMessage(raw: string, repoName: string): string {
     return `chore(${repoName}): update files`
   }
 
-  // Strip surrounding quotes from first line only
-  const firstLine = unfenced.split('\n')[0].replace(/^["'`]|["'`]$/g, '').trim()
+  const lines = unfenced.split('\n')
+  // Strip surrounding quotes from first line
+  lines[0] = lines[0].replace(/^["'`]|["'`]$/g, '').trim()
+
+  const firstLine = lines[0]
 
   // Check for valid conventional commit type
   const hasValidType = CONVENTIONAL_TYPES.some(t =>
@@ -122,7 +125,6 @@ function cleanCommitMessage(raw: string, repoName: string): string {
   }
 
   // Clamp subject line to 72 chars but keep body lines intact
-  const lines = unfenced.split('\n')
   if (lines[0].length > 72) {
     lines[0] = lines[0].slice(0, 72)
   }
