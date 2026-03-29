@@ -37,7 +37,7 @@ export function FileList({ repos, selectedRepo, onSelectFile, selectedFilePath }
           {selectedRepo ? 'No changes in this repo' : 'All repos are clean'}
         </div>
         <div style={{ fontSize: '12px', opacity: 0.6 }}>
-          Watching for file changes…
+          Monitoring for file changes…
         </div>
       </div>
     )
