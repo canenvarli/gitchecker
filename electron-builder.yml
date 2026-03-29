@@ -1,9 +1,9 @@
 appId: com.gitchecker.app
 productName: GitChecker
-copyright: Copyright © 2024
+copyright: Copyright © 2026 Izzet Can Envarli
 
 directories:
-  output: dist
+  output: release
   buildResources: build
 
 files:
@@ -12,16 +12,18 @@ files:
   - node_modules/**/*
   - package.json
 
+# ── macOS ──────────────────────────────────────────────────────────────────────
 mac:
   target:
     - target: dmg
       arch: [x64, arm64]
   category: public.app-category.developer-tools
-  hardenedRuntime: true
+  # Code signing: set CSC_IDENTITY_AUTO_DISCOVERY=false in CI to skip signing.
+  # For a notarized release build set APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD.
+  hardenedRuntime: false
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  teamId: VW4V9S459J
 
 dmg:
   contents:
@@ -33,6 +35,20 @@ dmg:
       y: 150
       type: file
 
+# ── Windows ────────────────────────────────────────────────────────────────────
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # No code signing — users may see a SmartScreen warning on first run.
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+# ── Notarization (runs after macOS sign; skips gracefully if creds absent) ────
 afterSign: scripts/notarize.js
 
 publish: null

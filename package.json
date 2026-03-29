@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
     "build:dmg": "tsc && vite build && electron-builder --mac dmg",
+    "build:win": "tsc && vite build && electron-builder --win nsis",
     "preview": "vite preview",
     "test": "jest",
     "test:unit": "jest tests/unit",

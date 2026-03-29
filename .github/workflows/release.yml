@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g. 1.0.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ── macOS DMG ─────────────────────────────────────────────────────────────────
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set version
+        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version
+
+      - name: Build macOS DMG
+        run: npm run build:dmg
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false   # skip code signing in CI
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-dmg
+          path: release/*.dmg
+          if-no-files-found: error
+
+  # ── Windows NSIS installer ────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set version
+        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version
+
+      - name: Build Windows installer
+        run: npm run build:win
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: release/*.exe
+          if-no-files-found: error
+
+  # ── GitHub Release ────────────────────────────────────────────────────────────
+  release:
+    needs: [build-mac, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-dmg
+          path: artifacts/mac
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: artifacts/win
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: GitChecker v${{ github.event.inputs.version }}
+          draft: false
+          prerelease: false
+          body: |
+            ## GitChecker v${{ github.event.inputs.version }}
+
+            ### Download
+            | Platform | File |
+            |---|---|
+            | macOS (Apple Silicon + Intel) | `GitChecker-${{ github.event.inputs.version }}.dmg` |
+            | Windows 64-bit | `GitChecker Setup ${{ github.event.inputs.version }}.exe` |
+
+            ### macOS install
+            Open the DMG, drag GitChecker to Applications. On first launch macOS may show a security warning — right-click the app and choose **Open** to bypass it.
+
+            ### Windows install
+            Run the installer. Windows SmartScreen may warn about an unknown publisher — click **More info → Run anyway**.
+
+            ### Requirements
+            - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) for AI commit messages (optional)
+          files: |
+            artifacts/mac/*.dmg
+            artifacts/win/*.exe
