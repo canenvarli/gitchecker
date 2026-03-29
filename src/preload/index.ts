@@ -86,6 +86,7 @@ const INVOKE_CHANNELS = new Set([
   'git:addToGitignore',
   'git:readFile',
   'git:readFileHead',
+  'git:deleteFile',
   'push:generateMessages',
   'push:start',
   'config:get',
@@ -235,6 +236,11 @@ contextBridge.exposeInMainWorld('gitchecker', {
   /** Read the HEAD-committed content of a file. Returns null for untracked files. */
   readFileHead(filePath: string, repoRoot: string): Promise<string | null> {
     return safeInvoke<string | null>('git:readFileHead', filePath, repoRoot)
+  },
+
+  /** Move an untracked file to Trash. */
+  deleteFile(filePath: string, repoRoot: string): Promise<void> {
+    return safeInvoke<void>('git:deleteFile', filePath, repoRoot)
   },
 
   // -- Main → Renderer listeners --------------------------------------------

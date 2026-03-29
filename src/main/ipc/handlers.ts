@@ -333,6 +333,16 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   // ──────────────────────────────────────────────
+  // git:deleteFile — move an untracked file to Trash
+  // ──────────────────────────────────────────────
+  ipcMain.handle('git:deleteFile', async (_event, filePath: string, repoRoot: string) => {
+    const root = validateRepoRoot(repoRoot)
+    const file = validateFilePath(root, filePath)
+    await shell.trashItem(path.join(root, file))
+    await refreshRepos(mainWindow)
+  })
+
+  // ──────────────────────────────────────────────
   // git:readFileHead — read file at HEAD revision
   // ──────────────────────────────────────────────
   ipcMain.handle('git:readFileHead', async (_event, filePath: string, repoRoot: string) => {

@@ -90,6 +90,7 @@ export interface IPCApi {
   openDirectoryPicker: () => Promise<string[]>
   readFile: (filePath: string, repoRoot: string) => Promise<string>
   readFileHead: (filePath: string, repoRoot: string) => Promise<string | null>
+  deleteFile: (filePath: string, repoRoot: string) => Promise<void>
 }
 
 declare global {

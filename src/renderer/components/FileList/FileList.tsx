@@ -221,6 +221,14 @@ const FileRow = React.memo(function FileRow({ file, repo, onSelectFile, isSelect
       label: `Ignore ${parentDir}/`,
       action: () => window.gitchecker.addToGitignore(`${parentDir}/`, repo.rootPath),
     }] : []),
+    ...(file.status === '?' ? [
+      { label: '', action: () => {}, separator: true },
+      {
+        label: 'Delete File',
+        action: () => window.gitchecker.deleteFile(file.path, repo.rootPath),
+        danger: true,
+      },
+    ] : []),
   ]
 
   return (
