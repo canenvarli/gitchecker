@@ -3,11 +3,13 @@ import fs from 'fs'
 import os from 'os'
 import { app } from 'electron'
 import type { Config } from '../../renderer/types'
+import { DEFAULT_COMMIT_PROMPT } from '../claude/commitMessage'
 
 const DEFAULT_CONFIG: Config = {
   watchRoots: [path.join(os.homedir(), 'github')],
   ignoredRepos: [],
   ignorePatterns: ['*.lock', 'package-lock.json', '.DS_Store', 'node_modules/**'],
+  commitPrompt: DEFAULT_COMMIT_PROMPT,
 }
 
 function getConfigPath(): string {
@@ -26,6 +28,7 @@ export function loadConfig(): Config {
       watchRoots: Array.isArray(parsed.watchRoots) ? parsed.watchRoots : DEFAULT_CONFIG.watchRoots,
       ignoredRepos: Array.isArray(parsed.ignoredRepos) ? parsed.ignoredRepos : DEFAULT_CONFIG.ignoredRepos,
       ignorePatterns: Array.isArray(parsed.ignorePatterns) ? parsed.ignorePatterns : DEFAULT_CONFIG.ignorePatterns,
+      commitPrompt: typeof parsed.commitPrompt === 'string' && parsed.commitPrompt.trim() ? parsed.commitPrompt : DEFAULT_CONFIG.commitPrompt,
     }
   } catch {
     return { ...DEFAULT_CONFIG }
@@ -47,6 +50,10 @@ export function updateConfig(partial: Partial<Config>): Config {
     watchRoots: partial.watchRoots !== undefined ? partial.watchRoots : current.watchRoots,
     ignoredRepos: partial.ignoredRepos !== undefined ? partial.ignoredRepos : current.ignoredRepos,
     ignorePatterns: partial.ignorePatterns !== undefined ? partial.ignorePatterns : current.ignorePatterns,
+    commitPrompt: (() => {
+      const raw = partial.commitPrompt !== undefined ? partial.commitPrompt : current.commitPrompt
+      return raw.trim() ? raw : DEFAULT_COMMIT_PROMPT
+    })(),
   }
   saveConfig(updated)
   return updated

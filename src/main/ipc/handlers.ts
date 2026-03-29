@@ -79,9 +79,10 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // push:generateMessages
   // ──────────────────────────────────────────────
   ipcMain.handle('push:generateMessages', async (_event, repos: RepoStatus[]) => {
+    const config = loadConfig()
     const jobs = await Promise.allSettled(
       repos.map(async (repo): Promise<PushJob> => {
-        const commitMessage = await generateCommitMessage(repo.rootPath, repo.name)
+        const commitMessage = await generateCommitMessage(repo.rootPath, repo.name, config.commitPrompt)
         return {
           repo,
           commitMessage,

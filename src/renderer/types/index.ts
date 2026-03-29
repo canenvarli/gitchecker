@@ -26,6 +26,7 @@ export interface Config {
   watchRoots: string[]
   ignoredRepos: string[]    // absolute paths
   ignorePatterns: string[]  // glob patterns e.g. "*.lock"
+  commitPrompt: string      // template passed to Claude; supports {{repoName}}, {{fileCount}}, {{additions}}, {{deletions}}, {{diff}}
 }
 
 export type PushStatus =

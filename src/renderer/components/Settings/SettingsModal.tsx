@@ -9,7 +9,7 @@ interface SettingsModalProps {
   onClose: () => void
 }
 
-type Tab = 'roots' | 'ignored' | 'patterns'
+type Tab = 'roots' | 'ignored' | 'patterns' | 'prompt'
 
 export function SettingsModal({ config, onUpdate, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>('roots')
@@ -80,10 +80,10 @@ export function SettingsModal({ config, onUpdate, onClose }: SettingsModalProps)
 
           {/* Tabs */}
           <div style={{ display: 'flex', gap: '0' }}>
-            {(['roots', 'ignored', 'patterns'] as Tab[]).map((tab) => (
+            {(['roots', 'ignored', 'patterns', 'prompt'] as Tab[]).map((tab) => (
               <TabButton
                 key={tab}
-                label={tab === 'roots' ? 'Watch Roots' : tab === 'ignored' ? 'Ignored Repos' : 'Ignore Patterns'}
+                label={tab === 'roots' ? 'Watch Roots' : tab === 'ignored' ? 'Ignored Repos' : tab === 'patterns' ? 'Ignore Patterns' : 'Commit Prompt'}
                 active={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
               />
@@ -109,6 +109,12 @@ export function SettingsModal({ config, onUpdate, onClose }: SettingsModalProps)
             <IgnorePatternsTab
               patterns={config.ignorePatterns}
               onUpdate={(ignorePatterns) => onUpdate({ ignorePatterns })}
+            />
+          )}
+          {activeTab === 'prompt' && (
+            <CommitPromptTab
+              prompt={config.commitPrompt}
+              onUpdate={(commitPrompt) => onUpdate({ commitPrompt })}
             />
           )}
         </div>
@@ -346,6 +352,74 @@ function IgnorePatternsTab({ patterns, onUpdate }: { patterns: string[]; onUpdat
       ) : (
         <AddButton onClick={() => setAdding(true)}>+ Add Pattern</AddButton>
       )}
+    </div>
+  )
+}
+
+// Commit Prompt Tab
+const DEFAULT_PLACEHOLDERS = ['{{repoName}}', '{{fileCount}}', '{{additions}}', '{{deletions}}', '{{diff}}']
+
+function CommitPromptTab({ prompt, onUpdate }: { prompt: string; onUpdate: (p: string) => void }) {
+  const [value, setValue] = React.useState(prompt)
+  const [saved, setSaved] = React.useState(false)
+
+  function handleSave() {
+    onUpdate(value)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  function handleReset() {
+    // Fetch the default from the backend via config reset — just clear to empty string;
+    // store.ts will re-hydrate with DEFAULT_COMMIT_PROMPT on next load.
+    // Instead, expose the default via IPC would be ideal but for simplicity we
+    // store the default in the config itself. Resetting means clearing so store defaults kick in.
+    onUpdate('')
+    setValue('')
+  }
+
+  // Sync if parent config changes (e.g. after reset)
+  React.useEffect(() => { setValue(prompt) }, [prompt])
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <SectionDescription>
+        Template sent to Claude when generating commit messages. Available placeholders:{' '}
+        {DEFAULT_PLACEHOLDERS.map((p) => (
+          <code key={p} style={{ fontFamily: 'monospace', fontSize: '11px', color: colors.accent, marginRight: '4px' }}>{p}</code>
+        ))}
+      </SectionDescription>
+
+      <textarea
+        className="selectable"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        spellCheck={false}
+        style={{
+          width: '100%',
+          minHeight: '300px',
+          padding: '10px',
+          fontSize: '11px',
+          fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+          lineHeight: '1.6',
+          backgroundColor: colors.bg.primary,
+          border: `1px solid ${colors.border}`,
+          borderRadius: '6px',
+          color: colors.text.primary,
+          resize: 'vertical',
+          outline: 'none',
+          boxSizing: 'border-box',
+        }}
+      />
+
+      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+        <SettingsButton variant="secondary" onClick={handleReset}>
+          Reset to Default
+        </SettingsButton>
+        <SettingsButton variant="primary" onClick={handleSave}>
+          {saved ? '✓ Saved' : 'Save Prompt'}
+        </SettingsButton>
+      </div>
     </div>
   )
 }
