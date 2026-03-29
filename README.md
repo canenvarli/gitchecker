@@ -23,9 +23,9 @@ If you work across many repos at the same time, GitChecker shows you everything 
 
 ---
 
-## Screenshots
+## Screenshot
 
-> _Coming soon_
+![GitChecker](assets/screenshot.png)
 
 ---
 
