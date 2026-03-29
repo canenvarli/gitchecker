@@ -6,4 +6,5 @@ dist-electron/
 release/
 .DS_Store
 *.log
+logs/
 coverage/

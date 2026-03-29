@@ -1,7 +1,7 @@
 import { app, BrowserWindow, shell, Menu } from 'electron'
 import path from 'path'
 import { registerIpcHandlers, refreshRepos } from './ipc/handlers'
-import { startWatcher, restartWatcher } from './git/watcher'
+import { startWatcher, stopWatcher, restartWatcher } from './git/watcher'
 import { scanAllRepos } from './git/scanner'
 import { loadConfig } from './config/store'
 
@@ -35,7 +35,9 @@ function createWindow(): BrowserWindow {
     // Vite dev server
     const devServerUrl = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173'
     win.loadURL(devServerUrl)
-    win.webContents.openDevTools()
+    if (process.env.GITCHECKER_DEBUG === '1') {
+      win.webContents.openDevTools()
+    }
   } else {
     win.loadFile(path.join(__dirname, '../../dist/index.html'))
   }
@@ -157,8 +159,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  // Clean up watcher
-  const { stopWatcher } = require('./git/watcher') as typeof import('./git/watcher')
   stopWatcher()
 })
 

@@ -8,12 +8,12 @@ interface StatusBadgeProps {
 }
 
 const STATUS_LABELS: Record<FileStatus, string> = {
-  M: 'M',
-  A: 'A',
-  D: 'D',
-  '?': '?',
-  R: 'R',
-  C: 'C',
+  M: 'Modified',
+  A: 'Added',
+  D: 'Deleted',
+  '?': 'Untracked',
+  R: 'Renamed',
+  C: 'Conflict',
 }
 
 const STATUS_TITLES: Record<FileStatus, string> = {
@@ -35,10 +35,10 @@ export const StatusBadge = React.memo(function StatusBadge({ status, staged }: S
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        width: '18px',
+        width: '72px',
         height: '18px',
         borderRadius: '3px',
-        fontSize: '11px',
+        fontSize: '10px',
         fontWeight: 700,
         fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
         color: color,
@@ -46,6 +46,7 @@ export const StatusBadge = React.memo(function StatusBadge({ status, staged }: S
         border: `1px solid ${color}44`,
         flexShrink: 0,
         lineHeight: 1,
+        letterSpacing: '0.02em',
         opacity: staged ? 1 : 0.75,
       }}
     >

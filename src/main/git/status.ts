@@ -33,6 +33,14 @@ export async function getRepoStatus(repoPath: string): Promise<RepoStatus> {
     }
   }
 
+  let lastCommit: string | undefined
+  try {
+    const raw = await git.raw(['log', '-1', '--format=%cI'])
+    if (raw.trim()) lastCommit = raw.trim()
+  } catch {
+    // new repo with no commits
+  }
+
   const statusResult = await git.status()
   const files: DirtyFile[] = []
 
@@ -70,6 +78,7 @@ export async function getRepoStatus(repoPath: string): Promise<RepoStatus> {
     branch,
     files,
     isDirty: files.length > 0,
+    lastCommit,
   }
 }
 

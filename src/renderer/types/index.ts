@@ -1,5 +1,12 @@
 export type FileStatus = 'M' | 'A' | 'D' | '?' | 'R' | 'C'
 
+export interface SelectedFile {
+  path: string
+  repoRoot: string
+  repoName: string
+  status: FileStatus
+}
+
 export interface DirtyFile {
   path: string      // relative to repo root
   status: FileStatus
@@ -12,6 +19,7 @@ export interface RepoStatus {
   branch: string
   files: DirtyFile[]
   isDirty: boolean
+  lastCommit?: string  // ISO 8601 timestamp of most recent commit
 }
 
 export interface Config {
@@ -75,6 +83,12 @@ export interface IPCApi {
   // Secrets
   onSecretsFound: (cb: (hits: SecretHit[]) => void) => () => void
   scanSecrets: (repos: RepoStatus[]) => Promise<SecretHit[]>
+
+  // .gitignore
+  addToGitignore: (pattern: string, repoRoot: string) => Promise<void>
+  openDirectoryPicker: () => Promise<string[]>
+  readFile: (filePath: string, repoRoot: string) => Promise<string>
+  readFileHead: (filePath: string, repoRoot: string) => Promise<string | null>
 }
 
 declare global {

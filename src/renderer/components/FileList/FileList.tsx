@@ -2,14 +2,17 @@ import React, { useState, useCallback } from 'react'
 import type { RepoStatus, DirtyFile } from '../../types'
 import { StatusBadge } from '../StatusBadge/StatusBadge'
 import { ContextMenu, ContextMenuItem } from './ContextMenu'
+import { DiffViewer } from '../DiffViewer/DiffViewer'
 import { colors } from '../../theme/colors'
 
 interface FileListProps {
   repos: RepoStatus[]
   selectedRepo: string | null
+  onSelectFile: (file: DirtyFile, repo: RepoStatus) => void
+  selectedFilePath?: string
 }
 
-export function FileList({ repos, selectedRepo }: FileListProps) {
+export function FileList({ repos, selectedRepo, onSelectFile, selectedFilePath }: FileListProps) {
   const visibleRepos = selectedRepo
     ? repos.filter((r) => r.rootPath === selectedRepo)
     : repos
@@ -52,13 +55,19 @@ export function FileList({ repos, selectedRepo }: FileListProps) {
       }}
     >
       {dirtyRepos.map((repo) => (
-        <RepoSection key={repo.rootPath} repo={repo} />
+        <RepoSection key={repo.rootPath} repo={repo} onSelectFile={onSelectFile} selectedFilePath={selectedFilePath} />
       ))}
     </div>
   )
 }
 
-function RepoSection({ repo }: { repo: RepoStatus }) {
+interface RepoSectionProps {
+  repo: RepoStatus
+  onSelectFile: (file: DirtyFile, repo: RepoStatus) => void
+  selectedFilePath?: string
+}
+
+function RepoSection({ repo, onSelectFile, selectedFilePath }: RepoSectionProps) {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
@@ -129,7 +138,13 @@ function RepoSection({ repo }: { repo: RepoStatus }) {
       {!collapsed && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
           {repo.files.map((file) => (
-            <FileRow key={`${repo.rootPath}::${file.path}`} file={file} repo={repo} />
+            <FileRow
+              key={`${repo.rootPath}::${file.path}`}
+              file={file}
+              repo={repo}
+              onSelectFile={onSelectFile}
+              isSelected={file.path === selectedFilePath}
+            />
           ))}
         </div>
       )}
@@ -140,15 +155,18 @@ function RepoSection({ repo }: { repo: RepoStatus }) {
 interface FileRowProps {
   file: DirtyFile
   repo: RepoStatus
+  onSelectFile: (file: DirtyFile, repo: RepoStatus) => void
+  isSelected: boolean
 }
 
-const FileRow = React.memo(function FileRow({ file, repo }: FileRowProps) {
+const FileRow = React.memo(function FileRow({ file, repo, onSelectFile, isSelected }: FileRowProps) {
   const [hovered, setHovered] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [diffFile, setDiffFile] = useState<{ path: string; repoRoot: string } | null>(null)
 
   const handleClick = useCallback(() => {
-    window.gitchecker.openFile(file.path, repo.rootPath)
-  }, [file.path, repo.rootPath])
+    onSelectFile(file, repo)
+  }, [file, repo, onSelectFile])
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -156,6 +174,12 @@ const FileRow = React.memo(function FileRow({ file, repo }: FileRowProps) {
   }, [])
 
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
+
+  // Derive gitignore pattern options from the file path (no Node.js path module in renderer)
+  const lastDot = file.path.lastIndexOf('.')
+  const ext = lastDot > file.path.lastIndexOf('/') + 1 ? file.path.slice(lastDot + 1) : ''
+  const lastSlash = file.path.lastIndexOf('/')
+  const parentDir = lastSlash > 0 ? file.path.slice(0, lastSlash) : '.'
 
   const contextItems: ContextMenuItem[] = [
     {
@@ -182,12 +206,21 @@ const FileRow = React.memo(function FileRow({ file, repo }: FileRowProps) {
         },
     {
       label: 'View Diff',
-      action: async () => {
-        const diff = await window.gitchecker.getDiff(file.path, repo.rootPath)
-        // Display in a simple alert for now — real diff viewer is future work
-        console.log(diff)
-      },
+      action: () => setDiffFile({ path: file.path, repoRoot: repo.rootPath }),
     },
+    { label: '', action: () => {}, separator: true },
+    {
+      label: 'Ignore this file',
+      action: () => window.gitchecker.addToGitignore(file.path, repo.rootPath),
+    },
+    ...(ext ? [{
+      label: `Ignore *.${ext} files`,
+      action: () => window.gitchecker.addToGitignore(`*.${ext}`, repo.rootPath),
+    }] : []),
+    ...(parentDir !== '.' ? [{
+      label: `Ignore ${parentDir}/`,
+      action: () => window.gitchecker.addToGitignore(`${parentDir}/`, repo.rootPath),
+    }] : []),
   ]
 
   return (
@@ -204,7 +237,7 @@ const FileRow = React.memo(function FileRow({ file, repo }: FileRowProps) {
           padding: '4px 8px',
           borderRadius: '5px',
           cursor: 'pointer',
-          backgroundColor: hovered ? colors.bg.tertiary : 'transparent',
+          backgroundColor: isSelected ? colors.accent + '22' : hovered ? colors.bg.tertiary : 'transparent',
           transition: 'background-color 0.1s',
         }}
       >
@@ -251,6 +284,14 @@ const FileRow = React.memo(function FileRow({ file, repo }: FileRowProps) {
           y={contextMenu.y}
           items={contextItems}
           onClose={closeContextMenu}
+        />
+      )}
+
+      {diffFile && (
+        <DiffViewer
+          filePath={diffFile.path}
+          repoRoot={diffFile.repoRoot}
+          onClose={() => setDiffFile(null)}
         />
       )}
     </>

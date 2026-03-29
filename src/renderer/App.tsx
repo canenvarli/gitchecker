@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { TitleBar } from './components/TitleBar/TitleBar'
 import { RepoList } from './components/RepoList/RepoList'
 import { FileList } from './components/FileList/FileList'
@@ -9,8 +9,11 @@ import { StatusBar } from './components/StatusBar/StatusBar'
 import { useRepos } from './hooks/useRepos'
 import { usePush } from './hooks/usePush'
 import { useConfig } from './hooks/useConfig'
-import type { RepoStatus, SecretHit } from './types'
+import { useToast } from './hooks/useToast'
+import type { RepoStatus, SecretHit, SelectedFile, DirtyFile } from './types'
 import { colors } from './theme/colors'
+import { FileViewer } from './components/FileViewer/FileViewer'
+import { ToastContainer } from './components/Toast/Toast'
 
 export default function App() {
   const { repos, refresh, lastScan } = useRepos()
@@ -24,9 +27,17 @@ export default function App() {
     cancelPush,
     updateJobMessage,
   } = usePush()
+  const { toasts, showToast, dismissToast } = useToast()
 
   // Which repo is focused in the sidebar (null = show all)
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null)
+
+  // Inline file viewer
+  const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null)
+  const [viewerHeight, setViewerHeight] = useState(300)
+  const isDragging = useRef(false)
+  const dragStartY = useRef(0)
+  const dragStartHeightRef = useRef(0)
 
   // Modal visibility
   const [showPushModal, setShowPushModal] = useState(false)
@@ -61,17 +72,28 @@ export default function App() {
     }
   }, [isPushing, jobs])
 
-  // Keyboard shortcut: Cmd+R to refresh
+  // Keyboard shortcut: Cmd+R to refresh, Escape to close file viewer
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.metaKey && e.key === 'r') {
         e.preventDefault()
         refresh()
+      } else if (e.key === 'Escape' && selectedFile) {
+        setSelectedFile(null)
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [refresh])
+  }, [refresh, selectedFile])
+
+  // Global unhandled promise rejection handler — surfaces IPC errors as toasts
+  useEffect(() => {
+    function handleUnhandled(e: PromiseRejectionEvent) {
+      showToast(`Error: ${e.reason?.message ?? String(e.reason)}`)
+    }
+    window.addEventListener('unhandledrejection', handleUnhandled)
+    return () => window.removeEventListener('unhandledrejection', handleUnhandled)
+  }, [showToast])
 
   const handlePushAll = useCallback(async () => {
     const dirty = repos.filter((r: RepoStatus) => r.isDirty)
@@ -80,6 +102,14 @@ export default function App() {
     setShowPushModal(true)
     await initiatePush(dirty)
   }, [repos, initiatePush])
+
+  const handlePushSelected = useCallback(async () => {
+    const repo = repos.find((r: RepoStatus) => r.rootPath === selectedRepo)
+    if (!repo?.isDirty) return
+
+    setShowPushModal(true)
+    await initiatePush([repo])
+  }, [repos, selectedRepo, initiatePush])
 
   const handleConfirmPush = useCallback(
     async (currentJobs: typeof jobs) => {
@@ -114,6 +144,38 @@ export default function App() {
     setPendingPushJobs([])
   }, [])
 
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    isDragging.current = true
+    dragStartY.current = e.clientY
+    dragStartHeightRef.current = viewerHeight
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'row-resize'
+
+    function onMove(ev: MouseEvent) {
+      if (!isDragging.current) return
+      const delta = dragStartY.current - ev.clientY
+      setViewerHeight(Math.max(100, Math.min(600, dragStartHeightRef.current + delta)))
+    }
+    function onUp() {
+      isDragging.current = false
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [viewerHeight])
+
+  const handleSelectFile = useCallback((file: DirtyFile, repo: RepoStatus) => {
+    setSelectedFile({
+      path: file.path,
+      repoRoot: repo.rootPath,
+      repoName: repo.name,
+      status: file.status,
+    })
+  }, [])
+
   const handleCancelPush = useCallback(() => {
     cancelPush()
     setShowPushModal(false)
@@ -135,8 +197,10 @@ export default function App() {
       {/* Title bar */}
       <TitleBar
         repos={repos}
+        selectedRepo={selectedRepo}
         onRefresh={refresh}
         onPushAll={handlePushAll}
+        onPushSelected={handlePushSelected}
         onSettings={() => setShowSettings(true)}
         isPushing={isPushing}
         isGenerating={isGenerating}
@@ -155,13 +219,51 @@ export default function App() {
           repos={repos}
           selectedRepo={selectedRepo}
           onSelect={setSelectedRepo}
+          onAddRoot={async (paths) => {
+            try {
+              const current = await window.gitchecker.getConfig()
+              const merged = [...new Set([...current.watchRoots, ...paths])]
+              await window.gitchecker.setConfig({ watchRoots: merged })
+            } catch (err) {
+              showToast(`Error adding root: ${err instanceof Error ? err.message : String(err)}`)
+            }
+          }}
         />
 
-        {/* File list */}
-        <FileList
-          repos={repos}
-          selectedRepo={selectedRepo}
-        />
+        {/* Right column: file list + optional viewer */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+            <FileList
+              repos={repos}
+              selectedRepo={selectedRepo}
+              onSelectFile={handleSelectFile}
+              selectedFilePath={selectedFile?.path}
+            />
+          </div>
+
+          {selectedFile && (
+            <>
+              {/* Draggable divider */}
+              <div
+                onMouseDown={handleDividerMouseDown}
+                style={{
+                  height: '5px',
+                  cursor: 'row-resize',
+                  backgroundColor: colors.border,
+                  flexShrink: 0,
+                  transition: 'background-color 0.1s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.accent + '88')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = colors.border)}
+              />
+              <FileViewer
+                selected={selectedFile}
+                height={viewerHeight}
+                onClose={() => setSelectedFile(null)}
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {/* Status bar */}
@@ -201,6 +303,9 @@ export default function App() {
           onProceed={handleSecretProceed}
         />
       )}
+
+      {/* Toast notifications */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }

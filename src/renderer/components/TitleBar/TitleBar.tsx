@@ -4,16 +4,21 @@ import { colors } from '../../theme/colors'
 
 interface TitleBarProps {
   repos: RepoStatus[]
+  selectedRepo: string | null
   onRefresh: () => void
   onPushAll: () => void
+  onPushSelected: () => void
   onSettings: () => void
   isPushing: boolean
   isGenerating: boolean
 }
 
-export function TitleBar({ repos, onRefresh, onPushAll, onSettings, isPushing, isGenerating }: TitleBarProps) {
+export function TitleBar({ repos, selectedRepo, onRefresh, onPushAll, onPushSelected, onSettings, isPushing, isGenerating }: TitleBarProps) {
   const dirtyCount = repos.filter((r) => r.isDirty).length
   const canPush = dirtyCount > 0 && !isPushing && !isGenerating
+
+  const selectedRepoObj = selectedRepo ? repos.find((r) => r.rootPath === selectedRepo) ?? null : null
+  const canPushSelected = selectedRepoObj?.isDirty === true && !isPushing && !isGenerating
 
   return (
     <div
@@ -90,7 +95,7 @@ export function TitleBar({ repos, onRefresh, onPushAll, onSettings, isPushing, i
           title="Settings"
           disabled={isPushing}
         >
-          ⚙
+          ⚙ Settings
         </TitleBarButton>
 
         <TitleBarButton
@@ -98,8 +103,25 @@ export function TitleBar({ repos, onRefresh, onPushAll, onSettings, isPushing, i
           title="Refresh (⌘R)"
           disabled={isPushing}
         >
-          ⟳
+          ⟳ Refresh
         </TitleBarButton>
+
+        {selectedRepoObj && (
+          <TitleBarButton
+            onClick={onPushSelected}
+            title={canPushSelected ? `Push ${selectedRepoObj.name}` : `${selectedRepoObj.name} has no changes`}
+            disabled={!canPushSelected}
+            accent
+          >
+            {isGenerating ? (
+              <span style={{ opacity: 0.6 }}>generating…</span>
+            ) : isPushing ? (
+              <span style={{ opacity: 0.6 }}>pushing…</span>
+            ) : (
+              <>⚡ Push {selectedRepoObj.name}</>
+            )}
+          </TitleBarButton>
+        )}
 
         <TitleBarButton
           onClick={onPushAll}
@@ -135,10 +157,10 @@ function TitleBarButton({ onClick, title, disabled, accent, children }: TitleBar
     display: 'inline-flex',
     alignItems: 'center',
     gap: '4px',
-    height: '28px',
-    padding: '0 10px',
+    height: '30px',
+    padding: '0 12px',
     borderRadius: '6px',
-    fontSize: '12px',
+    fontSize: '13px',
     fontWeight: 500,
     cursor: disabled ? 'not-allowed' : 'pointer',
     border: `1px solid ${colors.border}`,

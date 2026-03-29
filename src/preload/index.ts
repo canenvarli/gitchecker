@@ -83,11 +83,15 @@ const INVOKE_CHANNELS = new Set([
   'git:stageFile',
   'git:unstageFile',
   'git:getDiff',
+  'git:addToGitignore',
+  'git:readFile',
+  'git:readFileHead',
   'push:generateMessages',
   'push:start',
   'config:get',
   'config:set',
   'secrets:scan',
+  'dialog:openDirectory',
 ] as const)
 
 const LISTEN_CHANNELS = new Set([
@@ -211,6 +215,26 @@ contextBridge.exposeInMainWorld('gitchecker', {
   /** Run the secret-scanning pass over the given repos. */
   scanSecrets(repos: RepoStatus[]): Promise<SecretHit[]> {
     return safeInvoke<SecretHit[]>('secrets:scan', repos)
+  },
+
+  /** Append a pattern to the repo's .gitignore (creates it if absent). */
+  addToGitignore(pattern: string, repoRoot: string): Promise<void> {
+    return safeInvoke<void>('git:addToGitignore', { pattern, repoRoot })
+  },
+
+  /** Open a native directory picker. Returns selected paths or [] if cancelled. */
+  openDirectoryPicker(): Promise<string[]> {
+    return safeInvoke<string[]>('dialog:openDirectory')
+  },
+
+  /** Read the working-tree content of a file. */
+  readFile(filePath: string, repoRoot: string): Promise<string> {
+    return safeInvoke<string>('git:readFile', filePath, repoRoot)
+  },
+
+  /** Read the HEAD-committed content of a file. Returns null for untracked files. */
+  readFileHead(filePath: string, repoRoot: string): Promise<string | null> {
+    return safeInvoke<string | null>('git:readFileHead', filePath, repoRoot)
   },
 
   // -- Main → Renderer listeners --------------------------------------------

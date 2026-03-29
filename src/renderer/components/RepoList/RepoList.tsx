@@ -2,13 +2,29 @@ import React from 'react'
 import type { RepoStatus } from '../../types'
 import { colors } from '../../theme/colors'
 
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const s = Math.floor(diff / 1000)
+  if (s < 60) return 'just now'
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24)
+  if (d < 30) return `${d}d ago`
+  const mo = Math.floor(d / 30)
+  if (mo < 12) return `${mo}mo ago`
+  return `${Math.floor(mo / 12)}y ago`
+}
+
 interface RepoListProps {
   repos: RepoStatus[]
   selectedRepo: string | null
   onSelect: (rootPath: string | null) => void
+  onAddRoot?: (paths: string[]) => void
 }
 
-export function RepoList({ repos, selectedRepo, onSelect }: RepoListProps) {
+export function RepoList({ repos, selectedRepo, onSelect, onAddRoot }: RepoListProps) {
   return (
     <div
       style={{
@@ -71,7 +87,7 @@ export function RepoList({ repos, selectedRepo, onSelect }: RepoListProps) {
           padding: '8px',
         }}
       >
-        <AddRootButton />
+        <AddRootButton onAdd={onAddRoot ?? (() => {})} />
       </div>
     </div>
   )
@@ -157,7 +173,7 @@ const RepoRow = React.memo(function RepoRow({ repo, selected, onSelect }: RepoRo
         )}
       </div>
 
-      {/* Branch */}
+      {/* Branch + last commit time for clean repos */}
       <div
         style={{
           marginLeft: '13px',
@@ -170,20 +186,40 @@ const RepoRow = React.memo(function RepoRow({ repo, selected, onSelect }: RepoRo
         }}
       >
         [{repo.branch}]
+        {!repo.isDirty && repo.lastCommit && (
+          <span
+            title={new Date(repo.lastCommit).toLocaleString()}
+            style={{
+              marginLeft: '6px',
+              fontFamily: 'inherit',
+              opacity: 0.6,
+            }}
+          >
+            {relativeTime(repo.lastCommit)}
+          </span>
+        )}
       </div>
     </div>
   )
 })
 
-function AddRootButton() {
+function AddRootButton({ onAdd }: { onAdd: (paths: string[]) => void }) {
   const [hovered, setHovered] = React.useState(false)
+
+  async function handleClick() {
+    try {
+      const paths = await window.gitchecker.openDirectoryPicker()
+      if (paths.length > 0) onAdd(paths)
+    } catch {
+      // user cancelled
+    }
+  }
+
   return (
     <button
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => {
-        // TODO: open directory picker dialog via IPC
-      }}
+      onClick={handleClick}
       style={{
         width: '100%',
         height: '28px',

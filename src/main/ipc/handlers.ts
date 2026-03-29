@@ -1,5 +1,6 @@
-import { ipcMain, shell, BrowserWindow } from 'electron'
+import { ipcMain, shell, BrowserWindow, dialog } from 'electron'
 import path from 'path'
+import fs from 'fs'
 import { scanAllRepos } from '../git/scanner'
 import { getAllStatuses } from '../git/status'
 import { pullRepo, stageFile, unstageFile, stageAll, commitRepo, pushRepo, getDiff } from '../git/operations'
@@ -38,7 +39,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // ──────────────────────────────────────────────
   // git:openFile
   // ──────────────────────────────────────────────
-  ipcMain.handle('git:openFile', async (_event, { path: filePath, repoRoot }: { path: string; repoRoot: string }) => {
+  ipcMain.handle('git:openFile', async (_event, filePath: string, repoRoot: string) => {
     const fullPath = path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath)
     await shell.openPath(fullPath)
   })
@@ -46,7 +47,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // ──────────────────────────────────────────────
   // git:openInFinder
   // ──────────────────────────────────────────────
-  ipcMain.handle('git:openInFinder', async (_event, { path: filePath, repoRoot }: { path: string; repoRoot: string }) => {
+  ipcMain.handle('git:openInFinder', async (_event, filePath: string, repoRoot: string) => {
     const fullPath = path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath)
     shell.showItemInFolder(fullPath)
   })
@@ -54,7 +55,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // ──────────────────────────────────────────────
   // git:stageFile
   // ──────────────────────────────────────────────
-  ipcMain.handle('git:stageFile', async (_event, { path: filePath, repoRoot }: { path: string; repoRoot: string }) => {
+  ipcMain.handle('git:stageFile', async (_event, filePath: string, repoRoot: string) => {
     await stageFile(repoRoot, filePath)
     await refreshRepos(mainWindow)
   })
@@ -62,7 +63,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // ──────────────────────────────────────────────
   // git:unstageFile
   // ──────────────────────────────────────────────
-  ipcMain.handle('git:unstageFile', async (_event, { path: filePath, repoRoot }: { path: string; repoRoot: string }) => {
+  ipcMain.handle('git:unstageFile', async (_event, filePath: string, repoRoot: string) => {
     await unstageFile(repoRoot, filePath)
     await refreshRepos(mainWindow)
   })
@@ -70,7 +71,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // ──────────────────────────────────────────────
   // git:getDiff
   // ──────────────────────────────────────────────
-  ipcMain.handle('git:getDiff', async (_event, { path: filePath, repoRoot }: { path: string; repoRoot: string }) => {
+  ipcMain.handle('git:getDiff', async (_event, filePath: string, repoRoot: string) => {
     return getDiff(repoRoot, filePath)
   })
 
@@ -207,5 +208,78 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // ──────────────────────────────────────────────
   ipcMain.handle('secrets:scan', async (_event, repos: RepoStatus[]) => {
     return scanReposForSecrets(repos)
+  })
+
+  // ──────────────────────────────────────────────
+  // git:addToGitignore
+  // ──────────────────────────────────────────────
+  ipcMain.handle('git:addToGitignore', async (_event, { pattern, repoRoot }: { pattern: string; repoRoot: string }) => {
+    const gitignorePath = path.join(repoRoot, '.gitignore')
+    let content = ''
+    try {
+      content = fs.readFileSync(gitignorePath, 'utf8')
+    } catch {
+      // File doesn't exist yet — will be created
+    }
+    const lines = content.split('\n').map((l) => l.trim())
+    if (!lines.includes(pattern)) {
+      const sep = content === '' || content.endsWith('\n') ? '' : '\n'
+      fs.writeFileSync(gitignorePath, content + sep + pattern + '\n', 'utf8')
+    }
+
+    // For tracked files, .gitignore alone doesn't stop git from showing them.
+    // Find any tracked files now covered by the new pattern and untrack them.
+    try {
+      const { simpleGit } = await import('simple-git')
+      const git = simpleGit(repoRoot)
+      const ignoredTracked = await git.raw(['ls-files', '--ignored', '--exclude-standard'])
+      const filesToUntrack = ignoredTracked.trim().split('\n').filter(Boolean)
+      if (filesToUntrack.length > 0) {
+        await git.raw(['rm', '--cached', '--', ...filesToUntrack])
+      }
+    } catch {
+      // Non-fatal — file may simply not be tracked
+    }
+
+    await refreshRepos(mainWindow)
+  })
+
+  // ──────────────────────────────────────────────
+  // dialog:openDirectory
+  // ──────────────────────────────────────────────
+  ipcMain.handle('dialog:openDirectory', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory', 'multiSelections'],
+      title: 'Select Watch Root',
+      buttonLabel: 'Add Root',
+    })
+    return result.canceled ? [] : result.filePaths
+  })
+
+  // ──────────────────────────────────────────────
+  // git:readFile — read working tree file contents
+  // ──────────────────────────────────────────────
+  ipcMain.handle('git:readFile', async (_event, filePath: string, repoRoot: string) => {
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath)
+    // Safety: ensure path is within repoRoot
+    const resolved = path.resolve(fullPath)
+    const resolvedRoot = path.resolve(repoRoot)
+    if (!resolved.startsWith(resolvedRoot)) throw new Error('Path traversal denied')
+    return fs.readFileSync(resolved, 'utf8')
+  })
+
+  // ──────────────────────────────────────────────
+  // git:readFileHead — read file at HEAD revision
+  // ──────────────────────────────────────────────
+  ipcMain.handle('git:readFileHead', async (_event, filePath: string, repoRoot: string) => {
+    try {
+      const { simpleGit } = await import('simple-git')
+      const git = simpleGit(repoRoot)
+      // Normalize path separator for git
+      const gitPath = filePath.replace(/\\/g, '/')
+      return await git.show([`HEAD:${gitPath}`])
+    } catch {
+      return null  // File doesn't exist at HEAD (new/untracked file)
+    }
   })
 }
