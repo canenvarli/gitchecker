@@ -1,0 +1,38 @@
+appId: com.gitchecker.app
+productName: GitChecker
+copyright: Copyright © 2024
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - node_modules/**/*
+  - package.json
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  teamId: VW4V9S459J
+
+dmg:
+  contents:
+    - x: 410
+      y: 150
+      type: link
+      path: /Applications
+    - x: 130
+      y: 150
+      type: file
+
+afterSign: scripts/notarize.js
+
+publish: null

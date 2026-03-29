@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-electron/
+*.dmg
+*.app
+release/
+.DS_Store
+*.log
+coverage/

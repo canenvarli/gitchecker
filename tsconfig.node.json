@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "target": "ES2022",
+    "outDir": "dist-electron",
+    "baseUrl": ".",
+    "paths": {
+      "@main/*": ["src/main/*"]
+    }
+  },
+  "include": ["src/main", "src/preload"]
+}
