@@ -79,10 +79,27 @@ export async function getDiff(repoPath: string, filePath?: string): Promise<stri
     return diff
   }
 
-  // Full repo diff (staged + unstaged)
+  // Full repo diff (staged + unstaged + untracked)
   const staged = await git.diff(['--cached'])
   const unstaged = await git.diff()
-  return [staged, unstaged].filter(Boolean).join('\n')
+
+  // Include untracked files so Claude can see new file contents
+  const status = await git.status()
+  const untrackedDiffs: string[] = []
+  for (const f of status.not_added) {
+    const fullPath = path.join(repoPath, f)
+    try {
+      const content = fs.readFileSync(fullPath, 'utf-8')
+      untrackedDiffs.push(
+        `diff --git a/${f} b/${f}\nnew file\n--- /dev/null\n+++ b/${f}\n` +
+        content.split('\n').map(l => `+${l}`).join('\n')
+      )
+    } catch {
+      // binary or unreadable — skip
+    }
+  }
+
+  return [staged, unstaged, ...untrackedDiffs].filter(Boolean).join('\n')
 }
 
 export async function getConflictedContent(repoPath: string, filePath: string): Promise<string> {
