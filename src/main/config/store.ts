@@ -10,6 +10,7 @@ const DEFAULT_CONFIG: Config = {
   ignoredRepos: [],
   ignorePatterns: ['*.lock', 'package-lock.json', '.DS_Store', 'node_modules/**'],
   commitPrompt: DEFAULT_COMMIT_PROMPT,
+  claudeBinaryPath: '',
 }
 
 function getConfigPath(): string {
@@ -29,6 +30,7 @@ export function loadConfig(): Config {
       ignoredRepos: Array.isArray(parsed.ignoredRepos) ? parsed.ignoredRepos : DEFAULT_CONFIG.ignoredRepos,
       ignorePatterns: Array.isArray(parsed.ignorePatterns) ? parsed.ignorePatterns : DEFAULT_CONFIG.ignorePatterns,
       commitPrompt: typeof parsed.commitPrompt === 'string' && parsed.commitPrompt.trim() ? parsed.commitPrompt : DEFAULT_CONFIG.commitPrompt,
+      claudeBinaryPath: typeof parsed.claudeBinaryPath === 'string' ? parsed.claudeBinaryPath : DEFAULT_CONFIG.claudeBinaryPath,
     }
   } catch {
     return { ...DEFAULT_CONFIG }
@@ -54,6 +56,7 @@ export function updateConfig(partial: Partial<Config>): Config {
       const raw = partial.commitPrompt !== undefined ? partial.commitPrompt : current.commitPrompt
       return raw.trim() ? raw : DEFAULT_COMMIT_PROMPT
     })(),
+    claudeBinaryPath: partial.claudeBinaryPath !== undefined ? partial.claudeBinaryPath : current.claudeBinaryPath,
   }
   saveConfig(updated)
   return updated

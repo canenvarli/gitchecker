@@ -1,6 +1,37 @@
 import { spawn } from 'child_process'
+import { loadConfig } from '../config/store'
 
 const DEFAULT_TIMEOUT_MS = 60_000
+
+/** Thrown when the Claude CLI binary cannot be found on disk. */
+export class ClaudeNotFoundError extends Error {
+  constructor() {
+    super('Claude CLI not found. Configure the binary path in Settings > Claude.')
+    this.name = 'ClaudeNotFoundError'
+  }
+}
+
+/**
+ * When launched from Finder / Spotlight, Electron only sees the default macOS
+ * GUI PATH (/usr/bin:/bin:/usr/sbin:/sbin).  Augment it with the directories
+ * where CLI tools are commonly installed so we can find `claude`.
+ */
+function getAugmentedPath(): string {
+  const base = global.process.env.PATH ?? '/usr/bin:/bin:/usr/sbin:/sbin'
+  const home = global.process.env.HOME ?? ''
+  const extras = [
+    '/opt/homebrew/bin',          // Apple Silicon Homebrew
+    '/usr/local/bin',             // Intel Homebrew / manual installs
+    `${home}/.local/bin`,         // pipx, uv, etc.
+    `${home}/.npm-global/bin`,    // npm global
+    `${home}/.nvm/versions/node`, // nvm (partial — resolved below)
+    `${home}/.claude/local`,      // Claude CLI local install
+  ].filter(Boolean)
+
+  const dirs = new Set(base.split(':'))
+  for (const d of extras) dirs.add(d)
+  return [...dirs].join(':')
+}
 
 /**
  * Invoke the Claude CLI in print mode.
@@ -16,7 +47,11 @@ export async function invokeClaude(
   prompt: string,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<string> {
-  return new Promise((resolve) => {
+  // Resolve which binary to run: user override > auto-detect
+  const config = loadConfig()
+  const binary = config.claudeBinaryPath?.trim() || 'claude'
+
+  return new Promise((resolve, reject) => {
     let claudeProcess: ReturnType<typeof spawn>
 
     // Minimal environment — forward only what Claude CLI needs
@@ -25,7 +60,6 @@ export async function invokeClaude(
       'ANTHROPIC_API_KEY',
       'ANTHROPIC_BASE_URL',
       'HOME',
-      'PATH',
       'TERM',
       'USER',
       'LANG',
@@ -37,15 +71,17 @@ export async function invokeClaude(
         safeEnv[key] = global.process.env[key]
       }
     }
+    // Use augmented PATH so packaged app can find `claude` in Homebrew etc.
+    safeEnv.PATH = getAugmentedPath()
 
     try {
       // Use --print (-p) without a positional arg so prompt is read from stdin
-      claudeProcess = spawn('claude', ['--print'], {
+      claudeProcess = spawn(binary, ['--print'], {
         env: safeEnv,
         stdio: ['pipe', 'pipe', 'pipe'],
       })
     } catch {
-      resolve(generateFallback(prompt))
+      reject(new ClaudeNotFoundError())
       return
     }
 
@@ -79,8 +115,7 @@ export async function invokeClaude(
       clearTimeout(timer)
       if (timedOut) return
       if (err.code === 'ENOENT') {
-        // claude CLI not installed / not in PATH
-        resolve(generateFallback(prompt))
+        reject(new ClaudeNotFoundError())
       } else {
         resolve(generateFallback(prompt))
       }

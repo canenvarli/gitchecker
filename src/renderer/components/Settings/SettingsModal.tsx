@@ -9,7 +9,7 @@ interface SettingsModalProps {
   onClose: () => void
 }
 
-type Tab = 'roots' | 'ignored' | 'patterns' | 'prompt'
+type Tab = 'roots' | 'ignored' | 'patterns' | 'prompt' | 'claude'
 
 export function SettingsModal({ config, onUpdate, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>('roots')
@@ -80,14 +80,23 @@ export function SettingsModal({ config, onUpdate, onClose }: SettingsModalProps)
 
           {/* Tabs */}
           <div style={{ display: 'flex', gap: '0' }}>
-            {(['roots', 'ignored', 'patterns', 'prompt'] as Tab[]).map((tab) => (
-              <TabButton
-                key={tab}
-                label={tab === 'roots' ? 'Watch Roots' : tab === 'ignored' ? 'Ignored Repos' : tab === 'patterns' ? 'Ignore Patterns' : 'Commit Prompt'}
-                active={activeTab === tab}
-                onClick={() => setActiveTab(tab)}
-              />
-            ))}
+            {(['roots', 'ignored', 'patterns', 'prompt', 'claude'] as Tab[]).map((tab) => {
+              const labels: Record<Tab, string> = {
+                roots: 'Watch Roots',
+                ignored: 'Ignored Repos',
+                patterns: 'Ignore Patterns',
+                prompt: 'Commit Prompt',
+                claude: 'Claude',
+              }
+              return (
+                <TabButton
+                  key={tab}
+                  label={labels[tab]}
+                  active={activeTab === tab}
+                  onClick={() => setActiveTab(tab)}
+                />
+              )
+            })}
           </div>
         </div>
 
@@ -115,6 +124,12 @@ export function SettingsModal({ config, onUpdate, onClose }: SettingsModalProps)
             <CommitPromptTab
               prompt={config.commitPrompt}
               onUpdate={(commitPrompt) => onUpdate({ commitPrompt })}
+            />
+          )}
+          {activeTab === 'claude' && (
+            <ClaudeBinaryTab
+              path={config.claudeBinaryPath}
+              onUpdate={(claudeBinaryPath) => onUpdate({ claudeBinaryPath })}
             />
           )}
         </div>
@@ -418,6 +433,91 @@ function CommitPromptTab({ prompt, onUpdate }: { prompt: string; onUpdate: (p: s
         </SettingsButton>
         <SettingsButton variant="primary" onClick={handleSave}>
           {saved ? '✓ Saved' : 'Save Prompt'}
+        </SettingsButton>
+      </div>
+    </div>
+  )
+}
+
+// Claude Binary Tab
+function ClaudeBinaryTab({ path, onUpdate }: { path: string; onUpdate: (p: string) => void }) {
+  const [value, setValue] = React.useState(path)
+  const [saved, setSaved] = React.useState(false)
+
+  React.useEffect(() => { setValue(path) }, [path])
+
+  function handleSave() {
+    onUpdate(value)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  async function handleBrowse() {
+    const picked = await window.gitchecker.pickClaudeBinary()
+    if (picked) {
+      setValue(picked)
+      onUpdate(picked)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    }
+  }
+
+  function handleReset() {
+    setValue('')
+    onUpdate('')
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <SectionDescription>
+        Path to the <code style={{ fontFamily: 'monospace', fontSize: '11px', color: colors.accent }}>claude</code> CLI binary.
+        Leave empty to auto-detect from common install locations (Homebrew, /usr/local/bin, etc.).
+      </SectionDescription>
+
+      <div style={{ display: 'flex', gap: '6px' }}>
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSave() }}
+          placeholder="Auto-detect (e.g. /opt/homebrew/bin/claude)"
+          className="selectable"
+          style={inputStyle}
+        />
+        <SettingsButton variant="secondary" onClick={handleBrowse}>Browse</SettingsButton>
+      </div>
+
+      {value && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '7px 10px',
+          backgroundColor: colors.bg.primary,
+          border: `1px solid ${colors.border}`,
+          borderRadius: '6px',
+        }}>
+          <span style={{
+            flex: 1,
+            fontSize: '12px',
+            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            color: colors.text.secondary,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {value}
+          </span>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+        {value && (
+          <SettingsButton variant="secondary" onClick={handleReset}>
+            Reset to Auto-detect
+          </SettingsButton>
+        )}
+        <SettingsButton variant="primary" onClick={handleSave}>
+          {saved ? 'Saved' : 'Save'}
         </SettingsButton>
       </div>
     </div>

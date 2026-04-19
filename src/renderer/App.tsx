@@ -14,6 +14,7 @@ import type { RepoStatus, SecretHit, SelectedFile, DirtyFile } from './types'
 import { colors } from './theme/colors'
 import { FileViewer } from './components/FileViewer/FileViewer'
 import { ToastContainer } from './components/Toast/Toast'
+import { ClaudeNotFoundModal } from './components/ClaudeNotFound/ClaudeNotFound'
 
 export default function App() {
   const { repos, refresh, lastScan } = useRepos()
@@ -51,6 +52,9 @@ export default function App() {
   // Conflict counter — increments per push session that had conflicts
   const [conflictCount, setConflictCount] = useState(0)
 
+  // Claude not-found popup
+  const [showClaudeNotFound, setShowClaudeNotFound] = useState(false)
+
   // Listen for secrets found events from IPC
   useEffect(() => {
     const unsub = window.gitchecker.onSecretsFound((hits) => {
@@ -58,6 +62,14 @@ export default function App() {
         setSecretHits(hits)
         setShowSecretWarning(true)
       }
+    })
+    return unsub
+  }, [])
+
+  // Listen for claude-not-found events from IPC
+  useEffect(() => {
+    const unsub = window.gitchecker.onClaudeNotFound(() => {
+      setShowClaudeNotFound(true)
     })
     return unsub
   }, [])
@@ -301,6 +313,18 @@ export default function App() {
           hits={secretHits}
           onCancel={handleSecretCancel}
           onProceed={handleSecretProceed}
+        />
+      )}
+
+      {/* Claude not-found popup */}
+      {showClaudeNotFound && (
+        <ClaudeNotFoundModal
+          onSave={async (binaryPath) => {
+            await updateConfig({ claudeBinaryPath: binaryPath })
+            setShowClaudeNotFound(false)
+            showToast('Claude path saved. Retry your push to use AI commit messages.')
+          }}
+          onDismiss={() => setShowClaudeNotFound(false)}
         />
       )}
 

@@ -27,6 +27,7 @@ export interface Config {
   ignoredRepos: string[]    // absolute paths
   ignorePatterns: string[]  // glob patterns e.g. "*.lock"
   commitPrompt: string      // template passed to Claude; supports {{repoName}}, {{fileCount}}, {{additions}}, {{deletions}}, {{diff}}
+  claudeBinaryPath: string  // override path to claude CLI binary; empty = auto-detect
 }
 
 export type PushStatus =
@@ -84,6 +85,10 @@ export interface IPCApi {
   // Secrets
   onSecretsFound: (cb: (hits: SecretHit[]) => void) => () => void
   scanSecrets: (repos: RepoStatus[]) => Promise<SecretHit[]>
+
+  // Claude
+  onClaudeNotFound: (cb: () => void) => () => void
+  pickClaudeBinary: () => Promise<string | null>
 
   // .gitignore
   addToGitignore: (pattern: string, repoRoot: string) => Promise<void>

@@ -37,6 +37,7 @@ interface Config {
   watchRoots: string[]
   ignoredRepos: string[]
   ignorePatterns: string[]
+  claudeBinaryPath: string
 }
 
 type PushStatus =
@@ -93,6 +94,7 @@ const INVOKE_CHANNELS = new Set([
   'config:set',
   'secrets:scan',
   'dialog:openDirectory',
+  'dialog:openFile',
 ] as const)
 
 const LISTEN_CHANNELS = new Set([
@@ -100,6 +102,7 @@ const LISTEN_CHANNELS = new Set([
   'push:progress',
   'push:done',
   'secrets:found',
+  'claude:notFound',
 ] as const)
 
 // ---------------------------------------------------------------------------
@@ -209,6 +212,18 @@ contextBridge.exposeInMainWorld('gitchecker', {
   /** Merge a partial config object into the stored config and return the result. */
   setConfig(partial: Partial<Config>): Promise<Config> {
     return safeInvoke<Config>('config:set', partial)
+  },
+
+  // -- Claude ----------------------------------------------------------------
+
+  /** Subscribe to claude-not-found events (binary missing from PATH). */
+  onClaudeNotFound(cb: () => void): () => void {
+    return safeOn<undefined>('claude:notFound', () => cb())
+  },
+
+  /** Open a native file picker and return the selected path, or null if cancelled. */
+  pickClaudeBinary(): Promise<string | null> {
+    return safeInvoke<string | null>('dialog:openFile')
   },
 
   // -- Secrets ---------------------------------------------------------------

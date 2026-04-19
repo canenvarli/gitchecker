@@ -6,6 +6,7 @@ import { getAllStatuses } from '../git/status'
 import { pullRepo, stageFile, unstageFile, stageAll, commitRepo, pushRepo, getDiff } from '../git/operations'
 import { autoResolveMergeConflicts } from '../git/merge'
 import { generateCommitMessage } from '../claude/commitMessage'
+import { ClaudeNotFoundError } from '../claude/cli'
 import { scanReposForSecrets } from '../secrets/scanner'
 import { loadConfig, updateConfig } from '../config/store'
 import { restartWatcher } from '../git/watcher'
@@ -153,6 +154,14 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
         }
       })
     )
+
+    // If any job failed because Claude binary was not found, notify the renderer
+    const hadNotFound = jobs.some(
+      (r) => r.status === 'rejected' && r.reason instanceof ClaudeNotFoundError
+    )
+    if (hadNotFound && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('claude:notFound')
+    }
 
     return jobs.map((result, i): PushJob => {
       if (result.status === 'fulfilled') return result.value
@@ -321,6 +330,19 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
       buttonLabel: 'Add Root',
     })
     return result.canceled ? [] : result.filePaths
+  })
+
+  // ──────────────────────────────────────────────
+  // dialog:openFile — pick a file (used for Claude binary)
+  // ──────────────────────────────────────────────
+  ipcMain.handle('dialog:openFile', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile', 'showHiddenFiles', 'treatPackageAsDirectory'],
+      title: 'Select Claude CLI Binary',
+      buttonLabel: 'Select',
+      message: 'Locate the claude CLI binary on your system',
+    })
+    return result.canceled ? null : result.filePaths[0] ?? null
   })
 
   // ──────────────────────────────────────────────
