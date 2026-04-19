@@ -38,11 +38,47 @@ If you work across many repos at the same time, GitChecker shows you everything 
 
 ---
 
-## Getting started
+## Quick install (with Claude Code)
+
+If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed, this is the fastest way to go from clone to running app:
 
 ```bash
 git clone https://github.com/canenvarli/gitchecker.git
 cd gitchecker
+npm install
+claude
+```
+
+Then inside Claude Code, run:
+
+```
+/installmac
+```
+
+That's it — it builds the DMG, mounts it, copies `GitChecker.app` to `/Applications`, and cleans up. Launch from Spotlight or the Applications folder.
+
+---
+
+## Manual install
+
+```bash
+git clone https://github.com/canenvarli/gitchecker.git
+cd gitchecker
+npm install
+npm run build:dmg
+```
+
+Then open `release/GitChecker-*-arm64.dmg` and drag the app to `/Applications`, or run the install script directly:
+
+```bash
+./scripts/install-mac.sh
+```
+
+---
+
+## Development
+
+```bash
 npm install
 ./dev.sh
 ```
