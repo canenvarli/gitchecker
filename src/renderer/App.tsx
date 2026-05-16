@@ -244,7 +244,7 @@ export default function App() {
 
         {/* Right column: file list + optional viewer */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
             <FileList
               repos={repos}
               selectedRepo={selectedRepo}
